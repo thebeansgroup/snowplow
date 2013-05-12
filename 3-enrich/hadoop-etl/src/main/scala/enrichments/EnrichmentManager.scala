@@ -120,8 +120,9 @@ object EnrichmentManager {
 
     // 2b. Failable enrichments using the payload
 
-    // Partially apply decodeString to create a TransformFunc
+    // Partially apply functions which need an encoding, to create a TransformFunc
     val decodeString: TransformFunc = CU.decodeString(raw.encoding, _, _)
+    val extractUrlEncJson: TransformFunc = EE.extractUrlEncJson(raw.encoding, _, _)
 
     // We use a TransformMap which takes the format:
     // "source key" -> (transformFunction, field(s) to set)
@@ -172,8 +173,8 @@ object EnrichmentManager {
           ("se_va"   , (CU.stringToJFloat, "ev_value")),
           // Custom unstructured events
           ("ue_na"   , (decodeString, "ue_name")),
-          ("ue_pr"   , (decodeString, "ue_json")),
-          ("ue_px"   , (CU.decodeBase64Url, "ue_json")),
+          ("ue_pr"   , (extractUrlEncJson, "ue_json")),
+          ("ue_px"   , (EE.extractBase64EncJson, "ue_json")),
           // Ecommerce transactions
           ("tr_id"   , (decodeString, "tr_orderid")),
           ("tr_af"   , (decodeString, "tr_affiliation")),

@@ -100,24 +100,29 @@ object EventEnrichments {
     }
 
   /**
-   * Noodling.
-   *
-   * Checks that a String is valid JSON
+   * Noodling in support of below.
    */
-  // TODO: remove/rewrite when Avro introduced
-  val validateUnstructEvent: (String, String) => Validation[String, String] = (field, json) =>
-    CU.extractJson(json).bimap(
+  private def validateJson(field: String, str: String): Validation[String, String] = {
+    CU.extractJson(str).bimap(
       e => "Field [%s]: invalid JSON with parsing error: %s".format(field, e),
-      f => f.nospaces)
+      f => f.nospaces)    
+  }
 
   /**
-   * More noodling.
-   *
-   * Decodes and then checks the String is valid JSON
+   * Decodes URL-encoded String then validates
+   * it as correct JSON.
    */
   // TODO: remove/rewrite when Avro introduced
-  val decodeAndValidateUnstructEvent: (String, String) => Validation[String, String] = (field, str) =>
-    CU.decodeBase64Url(field, str).flatMap(json => validateUnstructEvent(field, json))
+  val extractUrlEncJson: (String, String, String) => Validation[String, String] = (enc, field, str) =>
+    CU.decodeString(enc, field, str).flatMap(json => validateJson(field, json))
+
+  /**
+   * Decodes Base64 (URL safe)-encoded String then
+   * validates it as correct JSON.
+   */
+  // TODO: remove/rewrite when Avro introduced
+  val extractBase64EncJson: (String, String) => Validation[String, String] = (field, str) =>
+    CU.decodeBase64Url(field, str).flatMap(json => validateJson(field, json))
 
   /**
    * Returns a unique event ID. The event ID is
