@@ -105,7 +105,7 @@ object EventEnrichments {
   private def validateJson(field: String, str: String): Validation[String, String] = {
     CU.extractJson(str).bimap(
       e => "Field [%s]: invalid JSON with parsing error: %s".format(field, e),
-      f => f.nospaces)    
+      f => str)
   }
 
   /**
