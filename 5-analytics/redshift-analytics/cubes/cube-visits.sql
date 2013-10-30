@@ -28,45 +28,47 @@ CREATE VIEW cubes_visits.basic AS
 	SELECT
 		domain_userid,
 		domain_sessionidx,
-		geo_country,
-		geo_region,
-		geo_city,
-		geo_zipcode,
-		geo_latitude,
-		geo_longitude,
 		MIN(collector_tstamp) AS visit_start_ts,
 		MIN(dvce_tstamp) AS dvce_visit_start_ts,
 		MAX(dvce_tstamp) AS dvce_visit_finish_ts,
 		EXTRACT(EPOCH FROM (MAX(dvce_tstamp) - MIN(dvce_tstamp))) AS visit_duration_s,
 		COUNT(*) AS number_of_events,
-		COUNT(DISTINCT(page_urlpath)) AS distinct_pages_viewed,
-		tr_orderid AS ecomm_orderid
+		COUNT(DISTINCT(page_urlpath)) AS distinct_pages_viewed
 	FROM
 		atomic.events
-	GROUP BY 1,2,3,4,5,6,7,8, tr_orderid;
+	GROUP BY 1,2;
 
 -- VIEW 2
 -- Referer data returned in a format that makes it easy to join with the visits view above
 CREATE VIEW cubes_visits.referer_basic AS
-	SELECT
-		domain_userid,
-		domain_sessionidx,
-		network_userid,
-		mkt_source,
-		mkt_medium,
-		mkt_campaign,
-		mkt_term,
-		refr_source,
-		refr_medium,
-		refr_term,
-		refr_urlhost,
-		refr_urlpath
-	FROM
-		atomic.events
-	WHERE 
-		refr_medium != 'internal'
-		AND refr_medium IS NOT NULL
-	GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12;
+	SELECT *
+	FROM (
+		SELECT
+			domain_userid,
+			domain_sessionidx,
+			mkt_source,
+			mkt_medium,
+			mkt_campaign,
+			mkt_term,
+			refr_source,
+			refr_medium,
+			refr_term,
+			refr_urlhost,
+			refr_urlpath,
+			dvce_tstamp,
+			RANK() OVER (PARTITION BY domain_userid, domain_sessionidx ORDER BY dvce_tstamp) AS "rank"
+		FROM
+			atomic.events
+		WHERE 
+			refr_medium != 'internal' -- Not an internal referer
+			AND (
+				NOT(refr_medium IS NULL OR refr_medium = '') OR 
+				NOT ((mkt_campaign IS NULL AND mkt_content IS NULL AND mkt_medium IS NULL AND mkt_source IS NULL AND mkt_term IS NULL)
+					OR (mkt_campaign = '' AND mkt_content = '' AND mkt_medium = '' AND mkt_source = '' AND mkt_term = '')
+				)
+			) -- Either the refr or mkt fields are set (not blank)
+		GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12) AS t
+	WHERE "rank" = 1 -- Only pull the first referer for each visit
 
 
 -- VIEW 3
@@ -75,13 +77,6 @@ CREATE VIEW cubes_visits.referer AS
 	SELECT
 		v.domain_userid,
 		v.domain_sessionidx,
-		v.network_userid,
-		v.geo_country,
-		v.geo_region,
-		v.geo_city,
-		v.geo_zipcode,
-		v.geo_latitude,
-		v.geo_longitude,
 		r.mkt_source,
 		r.mkt_medium,
 		r.mkt_campaign,
@@ -93,8 +88,7 @@ CREATE VIEW cubes_visits.referer AS
 		v.visit_start_ts,
 		v.visit_duration_s,
 		v.number_of_events,
-		v.distinct_pages_viewed,
-		v.ecomm_orderid
+		v.distinct_pages_viewed
 	FROM 
 		cubes_visits.basic v
 	LEFT JOIN cubes_visits.referer_basic r
@@ -102,27 +96,69 @@ CREATE VIEW cubes_visits.referer AS
 	AND v.domain_sessionidx = r.domain_sessionidx;
 
 -- VIEW 4
+-- Geographic info by visit
+CREATE VIEW cubes_visits.geo_basic AS 
+SELECT *
+FROM (
+	SELECT
+		domain_userid,
+		domain_sessionidx,
+		geo_country,
+		geo_region,
+		geo_city,
+		geo_zipcode,
+		geo_latitude,
+		geo_longitude,
+		RANK() OVER (PARTITION BY domain_userid, domain_sessionidx ORDER BY dvce_tstamp) AS "rank" -- Oddly, we have users who show multiple locations per session. Maybe they're working behind proxy IPs?
+	FROM atomic.events
+	WHERE geo_country IS NOT NULL
+	AND geo_country != '' ) AS t
+	WHERE "rank" = 1;
+
+-- VIEW 5
+-- Join geo data (view 4) with visit / referer data (view 3)
+CREATE VIEW cubes_visits.geo_and_referer AS
+	SELECT
+		r.domain_userid,
+		r.domain_sessionidx,
+		r.mkt_source,
+		r.mkt_medium,
+		r.mkt_campaign,
+		r.mkt_term,
+		r.refr_medium,
+		r.refr_term,
+		r.refr_urlhost,
+		r.refr_urlpath,
+		g.geo_country,
+		g.geo_region,
+		g.geo_city,
+		g.geo_zipcode,
+		g.geo_latitude,
+		g.geo_longitude,
+		r.visit_start_ts,
+		r.visit_duration_s,
+		r.number_of_events,
+		r.distinct_pages_viewed
+	FROM cubes_visits.referer r
+	LEFT JOIN cubes_visits.geo_basic g 
+	ON r.domain_userid = g.domain_userid
+	AND r.domain_sessionidx = g.domain_sessionidx;
+
+	
+
+-- VIEW 6
 -- Entry and exit pages by visit
 CREATE VIEW cubes_visits.entry_and_exit_pages AS
 	SELECT
 		v.domain_userid,
 		v.domain_sessionidx,
-		v.network_userid,
-		v.geo_country,
-		v.geo_region,
-		v.geo_city,
-		v.geo_zipcode,
-		v.geo_latitude,
-		v.geo_longitude,
 		v.visit_start_ts,
-		v.visit_duration_s,
 		e1.page_urlhost AS entry_page_host,
 		e1.page_urlpath AS entry_page_path,
 		e2.page_urlhost AS exit_page_host,
 		e2.page_urlpath AS exit_page_path,
 		v.number_of_events,
-		v.distinct_pages_viewed,
-		v.ecomm_orderid
+		v.distinct_pages_viewed
 	FROM
 		cubes_visits.basic v
 		LEFT JOIN atomic.events e1
@@ -135,7 +171,7 @@ CREATE VIEW cubes_visits.entry_and_exit_pages AS
 			AND v.dvce_visit_finish_ts = e2.dvce_tstamp;
 
 
--- VIEW 5
+-- VIEW 6
 -- Consolidated table with visits data (VIEW 3) and entry / exit page data (VIEW 4)
 CREATE VIEW cubes_visits.referer_entries_and_exits AS
 	SELECT
