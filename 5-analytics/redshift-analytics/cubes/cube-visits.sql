@@ -28,7 +28,6 @@ CREATE VIEW cubes_visits.basic AS
 	SELECT
 		domain_userid,
 		domain_sessionidx,
-		network_userid,
 		geo_country,
 		geo_region,
 		geo_city,
@@ -44,7 +43,7 @@ CREATE VIEW cubes_visits.basic AS
 		tr_orderid AS ecomm_orderid
 	FROM
 		atomic.events
-	GROUP BY 1,2,3,4,5,6,7,8,9, tr_orderid;
+	GROUP BY 1,2,3,4,5,6,7,8, tr_orderid;
 
 -- VIEW 2
 -- Referer data returned in a format that makes it easy to join with the visits view above
