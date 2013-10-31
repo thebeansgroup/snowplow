@@ -148,31 +148,54 @@ CREATE VIEW cubes_visits.geo_and_referer AS
 
 -- VIEW 6
 -- Entry and exit pages by visit
+-- First create a record of the pages each visitor has looked at
+CREATE VIEW cubes_visits.page_views_in_sequence AS
+	SELECT
+	domain_userid,
+	domain_sessionidx,
+	page_urlhost,
+	page_urlpath,
+	rank_asc,
+	rank_desc
+	FROM (
+		SELECT
+		domain_userid,
+		domain_sessionidx,
+		page_urlhost,
+		page_urlpath,
+		RANK() OVER (PARTITION BY domain_userid, domain_sessionidx ORDER BY dvce_tstamp) AS "rank_asc",
+		RANK() OVER (PARTITION BY domain_userid, domain_sessionidx ORDER BY dvce_tstamp DESC) AS "rank_desc"
+		FROM atomic.events
+		WHERE event = 'page_view') AS t
+	GROUP BY 1,2,3,4,5,6; -- remove duplicates
+
+
+-- Now use the above table to populate the entry and exit pages table
 CREATE VIEW cubes_visits.entry_and_exit_pages AS
 	SELECT
 		v.domain_userid,
 		v.domain_sessionidx,
 		v.visit_start_ts,
-		e1.page_urlhost AS entry_page_host,
-		e1.page_urlpath AS entry_page_path,
-		e2.page_urlhost AS exit_page_host,
-		e2.page_urlpath AS exit_page_path,
+		p1.page_urlhost AS entry_page_host,
+		p1.page_urlpath AS entry_page_path,
+		p2.page_urlhost AS exit_page_host,
+		p2.page_urlpath AS exit_page_path,
 		v.number_of_events,
 		v.distinct_pages_viewed
 	FROM
 		cubes_visits.basic v
-		LEFT JOIN atomic.events e1
-			ON v.domain_userid = e1.domain_userid
-			AND v.domain_sessionidx = e1.domain_sessionidx
-			AND v.dvce_visit_start_ts = e1.dvce_tstamp
-		LEFT JOIN atomic.events e2
-			ON v.domain_userid = e2.domain_userid
-			AND v.domain_sessionidx = e2.domain_sessionidx
-			AND v.dvce_visit_finish_ts = e2.dvce_tstamp;
+		LEFT JOIN page_views_in_sequence p1
+			ON v.domain_userid = p1.domain_userid
+			AND v.domain_sessionidx = p1.domain_sessionidx
+		LEFT JOIN page_views_in_sequence p2
+			ON v.domain_userid = p2.domain_userid
+			AND v.domain_sessionidx = p2.domain_sessionidx
+	WHERE p1.rank_asc = 1
+	AND   p2.rank_desc = 1;
 
 
--- VIEW 6
--- Consolidated table with visits data (VIEW 3) and entry / exit page data (VIEW 4)
+-- VIEW 7
+-- Consolidated table with geo and referer data (VIEW 5) and entry / exit page data (VIEW 6)
 CREATE VIEW cubes_visits.referer_entries_and_exits AS
 	SELECT
 		a.*,
@@ -181,7 +204,7 @@ CREATE VIEW cubes_visits.referer_entries_and_exits AS
 		b.exit_page_host,
 		b.exit_page_path
 	FROM
-		cubes_visits.referer a
+		cubes_visits.geo_and_referer a
 		LEFT JOIN cubes_visits.entry_and_exit_pages b
 	ON a.domain_userid = b.domain_userid
 	AND a.domain_sessionidx = b.domain_sessionidx;
