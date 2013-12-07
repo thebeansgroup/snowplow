@@ -45,6 +45,17 @@ module SnowPlow
         @jobflow.log_uri = config[:s3][:buckets][:log]
         @jobflow.enable_debugging = config[:debug]
 
+        if true # config[:hbase]
+          # Add bootstrap action to install and configure HBase on the cluster
+          install_hbase_action = Elasticity::BootstrapAction.new('s3://#{}.elasticmapreduce/bootstrap-actions/setup-hbase')
+          jobflow.add_bootstrap_action(install_hbase_action)
+          
+          # Step to start the Hbase master
+          start_hbase_step = Elasticity::CustomJarStep.new('/home/hadoop/lib/hbase-0.92.0.jar')
+          start_hbase_step.arguments = ['emr.hbase.backup.Main', '--start-master']
+          jobflow.add_step(start_hbase_step)
+        end
+
         # Add extra configuration
         if config[:emr][:jobflow].respond_to?(:each)
           config[:emr][:jobflow].each { |key, value|
