@@ -49,7 +49,8 @@ module SnowPlow
         @jobflow.keep_job_flow_alive_when_no_steps = true
         if true # config[:hbase]
           # Add bootstrap action to install and configure HBase on the cluster
-          install_hbase_action = Elasticity::BootstrapAction.new("s3://#{config[:s3][:region]}.elasticmapreduce/bootstrap-actions/setup-hbase", '', '')
+          # TODO: update following fix of https://github.com/rslifka/elasticity/issues/55
+          install_hbase_action = Elasticity::BootstrapAction.new("s3://#{config[:s3][:region]}.elasticmapreduce/bootstrap-actions/setup-hbase", 'placeholder', 'placeholder')
           @jobflow.add_bootstrap_action(install_hbase_action)
           
           # Step to start the Hbase master
