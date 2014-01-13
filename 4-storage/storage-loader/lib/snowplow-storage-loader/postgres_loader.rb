@@ -41,7 +41,7 @@ module SnowPlow
         event_files = get_event_files(events_dir)
         if target[:host].include?(RDS_IDENTIFIER)
           query = ["COPY #{target[:table]} FROM STDIN WITH CSV ESCAPE E'#{ESCAPE_CHAR}' QUOTE E'#{QUOTE_CHAR}' DELIMITER E'#{EVENT_FIELD_SEPARATOR}' NULL '#{NULL_STRING}';"]
-          status = execute_rds_transaction(target, query)
+          status = execute_rds_transaction(target, query, files)
         else
           queries = event_files.map { |f|
             "COPY #{target[:table]} FROM '#{f}' WITH CSV ESCAPE E'#{ESCAPE_CHAR}' QUOTE E'#{QUOTE_CHAR}' DELIMITER E'#{EVENT_FIELD_SEPARATOR}' NULL '#{NULL_STRING}';"
@@ -79,9 +79,9 @@ module SnowPlow
       #
       # Returns either an empty list on success, or on failure
       # a list of the form [query, err_class, err_message]      
-      def execute_rds_transaction(target, queries)
+      def execute_rds_transaction(target, queries, files)
 
-        event_files.map { |f|
+        files.map { |f|
           command = "cat #{f} | psql -h #{target[:host]} -p #{target[:port]} -U #{target[:username]} -W #{target[:dbname]} -c #{query}"
           exec command
         }
