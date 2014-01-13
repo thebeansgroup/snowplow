@@ -26,6 +26,7 @@ module SnowPlow
       NULL_STRING = ""
       QUOTE_CHAR = "\\x01"
       ESCAPE_CHAR = "\\x02"
+      RDS_IDENTIFIER = "rds.amazonaws.com"
 
       # Loads the SnowPlow event files into Postgres.
       #
@@ -38,11 +39,16 @@ module SnowPlow
         puts "Loading Snowplow events into #{target[:name]} (PostgreSQL database)..."
 
         event_files = get_event_files(events_dir)
-        queries = event_files.map { |f|
-            "COPY #{target[:table]} FROM '#{f}' WITH CSV ESCAPE E'#{ESCAPE_CHAR}' QUOTE E'#{QUOTE_CHAR}' DELIMITER '#{EVENT_FIELD_SEPARATOR}' NULL '#{NULL_STRING}';"
-        }
-        
-        status = execute_transaction(target, queries)
+        if target[:host].include?(RDS_IDENTIFIER)
+          query = ["COPY #{target[:table]} FROM STDIN WITH CSV ESCAPE E'#{ESCAPE_CHAR}' QUOTE E'#{QUOTE_CHAR}' DELIMITER E'#{EVENT_FIELD_SEPARATOR}' NULL '#{NULL_STRING}';"]
+          status = execute_rds_transaction(target, query)
+        else
+          queries = event_files.map { |f|
+            "COPY #{target[:table]} FROM '#{f}' WITH CSV ESCAPE E'#{ESCAPE_CHAR}' QUOTE E'#{QUOTE_CHAR}' DELIMITER E'#{EVENT_FIELD_SEPARATOR}' NULL '#{NULL_STRING}';"
+          }
+          status = execute_transaction(target, queries)
+        end
+
         unless status == []
           raise DatabaseLoadError, "#{status[1]} error executing #{status[0]}: #{status[2]}"
         end
@@ -64,6 +70,24 @@ module SnowPlow
       end
       module_function :load_events
 
+      # Pipes a set of files into the
+      # remote RDS database.
+      #
+      # Parameters:
+      # +target+:: the configuration options for this target
+      # +queries+:: the Redshift queries to execute sequentially
+      #
+      # Returns either an empty list on success, or on failure
+      # a list of the form [query, err_class, err_message]      
+      def execute_rds_transaction(target, queries)
+
+        event_files.map { |f|
+          command = "cat #{f} | psql -h #{target[:host]} -p #{target[:port]} -U #{target[:username]} -W #{target[:dbname]} -c #{query}"
+          exec command
+        }
+
+      end
+      module_function :execute_rds_transaction
       # Converts a set of queries into a
       # single Redshift read-write
       # transaction.
