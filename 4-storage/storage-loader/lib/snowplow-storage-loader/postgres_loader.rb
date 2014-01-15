@@ -37,7 +37,9 @@ module SnowPlow
       # +include_steps+:: Array of optional steps to include
       def load_events(events_dir, target, skip_steps, include_steps)
         puts "Loading Snowplow events into #{target[:name]} (PostgreSQL database)..."
+        
         event_files = get_event_files(events_dir)
+
         if target[:host].include?(RDS_IDENTIFIER)
           query = "COPY #{target[:table]} FROM STDIN WITH CSV ESCAPE E'#{ESCAPE_CHAR}' QUOTE E'#{QUOTE_CHAR}' DELIMITER E'#{EVENT_FIELD_SEPARATOR}' NULL '#{NULL_STRING}';"
           status = execute_rds_transaction(target, query, event_files)
