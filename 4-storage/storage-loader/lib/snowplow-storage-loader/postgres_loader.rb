@@ -26,6 +26,7 @@ module SnowPlow
       NULL_STRING = ""
       QUOTE_CHAR = "\\x01"
       ESCAPE_CHAR = "\\x02"
+      RDS_IDENTIFIER = "rds.amazonaws.com"
 
       # Loads the SnowPlow event files into Postgres.
       #
@@ -36,13 +37,17 @@ module SnowPlow
       # +include_steps+:: Array of optional steps to include
       def load_events(events_dir, target, skip_steps, include_steps)
         puts "Loading Snowplow events into #{target[:name]} (PostgreSQL database)..."
-
         event_files = get_event_files(events_dir)
-        queries = event_files.map { |f|
-            "COPY #{target[:table]} FROM '#{f}' WITH CSV ESCAPE E'#{ESCAPE_CHAR}' QUOTE E'#{QUOTE_CHAR}' DELIMITER '#{EVENT_FIELD_SEPARATOR}' NULL '#{NULL_STRING}';"
-        }
-        
-        status = execute_transaction(target, queries)
+        if target[:host].include?(RDS_IDENTIFIER)
+          query = "COPY #{target[:table]} FROM STDIN WITH CSV ESCAPE E'#{ESCAPE_CHAR}' QUOTE E'#{QUOTE_CHAR}' DELIMITER E'#{EVENT_FIELD_SEPARATOR}' NULL '#{NULL_STRING}';"
+          status = execute_rds_transaction(target, query, event_files)
+        else
+          queries = event_files.map { |f|
+            "COPY #{target[:table]} FROM '#{f}' WITH CSV ESCAPE E'#{ESCAPE_CHAR}' QUOTE E'#{QUOTE_CHAR}' DELIMITER E'#{EVENT_FIELD_SEPARATOR}' NULL '#{NULL_STRING}';"
+          }
+          status = execute_transaction(target, queries)
+        end
+
         unless status == []
           raise DatabaseLoadError, "#{status[1]} error executing #{status[0]}: #{status[2]}"
         end
@@ -63,6 +68,38 @@ module SnowPlow
         end  
       end
       module_function :load_events
+
+      # Pipes a set of files into the
+      # remote RDS database.
+      #
+      # Parameters:
+      # +target+:: the configuration options for this target
+      # +query+:: the Redshift query to execute sequentially
+      # +files+:: the files to pass to the psql command
+      #
+      # Returns either an empty list on success, or on failure
+      # stops execution
+      def execute_rds_transaction(target, query, files)
+        password = "PGPASSWORD='#{target[:password]}';"
+        output = true
+        files.each do |f|
+          command = "#{password}
+                    cat #{f} | \
+                    psql -w \
+                    -h #{target[:host]} \
+                    -p #{target[:port]} \
+                    -U #{target[:username]} \
+                    -d #{target[:database]} \
+                    -c \"#{query}\""
+          if output
+            output = system(command)
+          end
+        end
+        if output
+          return []
+        end
+      end
+      module_function :execute_rds_transaction
 
       # Converts a set of queries into a
       # single Redshift read-write
