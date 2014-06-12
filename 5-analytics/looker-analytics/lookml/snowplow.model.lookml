@@ -9,84 +9,39 @@
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
 #
-# Version:     0.1.0
+# Version: 2-0-0
 #
-# Author(s):   Yali Sassoon
-# Copyright:   Copyright (c) 2013-2014 Snowplow Analytics Ltd
-# License:     Apache License Version 2.0
+# Author(s): Yali Sassoon
+# Copyright: Copyright (c) 2013-2014 Snowplow Analytics Ltd
+# License: Apache License Version 2.0
 
 - connection: snowplow
 
-- scoping: true           # for backward compatibility
-- include: "*.lookml"     # include all the lookml files in the same directory as the model
+- scoping: true                  # for backward compatibility
+- include: "*.view.lookml"       # include all the views
+- include: "*.dashboard.lookml"  # include all the dashboards
 
 - base_view: events  
   joins:
-  - join: visits
+  - join: sessions
     sql_on: |
-      events.domain_userid = visits.domain_userid AND
-      events.domain_sessionidx = visits.domain_sessionidx
-  - join: source
-    sql_on: | 
-      events.domain_userid = source.domain_userid AND
-      events.domain_sessionidx = source.domain_sessionidx
-  - join: geo
-    sql_on: | 
-      events.domain_userid = geo.domain_userid AND
-      events.domain_sessionidx = geo.domain_sessionidx
-  - join: landing_page
-    sql_on: | 
-      events.domain_userid = landing_page.domain_userid AND
-      events.domain_sessionidx = landing_page.domain_sessionidx
-  - join: last_page
-    sql_on: | 
-      events.domain_userid = last_page.domain_userid AND
-      events.domain_sessionidx = last_page.domain_sessionidx
+      events.domain_userid = sessions.domain_userid AND
+      events.domain_sessionidx = sessions.domain_sessionidx
   - join: visitors
-    sql_foreign_key: events.domain_userid
-  - join: source_original
-    sql_foreign_key: events.domain_userid
-  - join: landing_page_original
-    sql_foreign_key: events.domain_userid
-    
-- base_view: visits
-  joins:
-  - join: visitors
-    sql_foreign_key: visits.domain_userid
-  - join: source
-    sql_on: | 
-      visits.domain_userid = source.domain_userid AND
-      visits.domain_sessionidx = source.domain_sessionidx
-  - join: geo
-    sql_on: | 
-      visits.domain_userid = geo.domain_userid AND
-      visits.domain_sessionidx = geo.domain_sessionidx
-  - join: landing_page
-    sql_on: | 
-      visits.domain_userid = landing_page.domain_userid AND
-      visits.domain_sessionidx = landing_page.domain_sessionidx
-  - join: last_page
-    sql_on: | 
-      visits.domain_userid = last_page.domain_userid AND
-      visits.domain_sessionidx = last_page.domain_sessionidx
-  - join: source_original
-    sql_foreign_key: visits.domain_userid
-  - join: landing_page_original
-    sql_foreign_key: visits.domain_userid
-  - join: transactions
     sql_on: |
-      visits.domain_userid = transactions.domain_userid AND
-      visits.domain_sessionidx = transactions.domain_sessionidx
+      events.domain_userid = visitors.domain_userid
+
+# Views to support events
+- base_view: atomic_events
+
+- base_view: sessions
+  joins: 
+  - join: visitors
+    sql_on: |
+      sessions.domain_userid = visitors.domain_userid
 
 - base_view: visitors
-  joins:
-  - join: source_original
-    sql_foreign_key: visitors.domain_userid
-  - join: landing_page_original
-    sql_foreign_key: visitors.domain_userid
-  - join: transactions
-    sql_on: visitors.domain_userid = transactions.domain_userid
-    
+
 - base_view: transactions
 
 - base_view: transaction_items

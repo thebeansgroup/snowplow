@@ -41,13 +41,15 @@ object SnowplowCommonEnrichBuild extends Build {
         // Scala
         Libraries.scalaz7,
         Libraries.argonaut,
+        Libraries.snowplowRawEvent,
         Libraries.scalaUtil,
         Libraries.refererParser,
         Libraries.maxmindGeoip,
         // Scala (test only)
         Libraries.specs2,
         Libraries.scalazSpecs2,
-        Libraries.scalaCheck
+        Libraries.scalaCheck,
+        Libraries.commonsCodec
       )
     )
 }

@@ -28,7 +28,7 @@ import org.joda.time.format.{DateTimeFormat, DateTimeFormatter}
  * The dedicated loader for events
  * collected by CloudFront.
  */
-object CloudFrontLoader extends CloudFrontLikeLoader {
+object CloudfrontLoader extends CloudfrontLikeLoader {
 
   /**
    * Returns the InputSource for this
@@ -45,7 +45,7 @@ object CloudFrontLoader extends CloudFrontLikeLoader {
    * Unfortunate as it means we
    * have some ambiguities to resolve.
    */
-  def isActualCloudFront = true
+  def isActualCloudfront = true
 }
 
 /**
@@ -55,7 +55,7 @@ object CloudFrontLoader extends CloudFrontLikeLoader {
  * a Tomcat log format which
  * approximates the CloudFront format).
  */
-object CljTomcatLoader extends CloudFrontLikeLoader {
+object CljTomcatLoader extends CloudfrontLikeLoader {
 
   /**
    * Returns the InputSource for this
@@ -80,7 +80,7 @@ object CljTomcatLoader extends CloudFrontLikeLoader {
    * sidestep the ambiguities in the
    * CloudFront access log format.
    */
-  def isActualCloudFront = false
+  def isActualCloudfront = false
 }
 
 /**
@@ -96,7 +96,7 @@ object CljTomcatLoader extends CloudFrontLikeLoader {
  * For more details on this format, please see:
  * http://docs.amazonwebservices.com/AmazonCloudFront/latest/DeveloperGuide/AccessLogs.html#LogFileFormat
  */
-trait CloudFrontLikeLoader extends CollectorLoader {
+trait CloudfrontLikeLoader extends CollectorLoader[String] {
 
   /**
    * Gets the source of this input.
@@ -119,7 +119,7 @@ trait CloudFrontLikeLoader extends CollectorLoader {
    * we can sidestep if we know we are
    * processing Clojure-Tomcat logs.
    */
-  def isActualCloudFront: Boolean
+  def isActualCloudfront: Boolean
 
   // The encoding used on CloudFront logs
   private val CfEncoding = "UTF-8"
@@ -143,12 +143,14 @@ trait CloudFrontLikeLoader extends CollectorLoader {
     w + "([\\S]+)"  +   // Referer       / cs(Referer)
     w + "([\\S]+)"  +   // UserAgent     / cs(User Agent)
     w + "([\\S]+)"  +   // Querystring   / cs-uri-query
-    ow + "[\\S]*"   +   // CookieHeader  / cs(Cookie)         added 12 Sep 2012
+    ow + "[\\S]*"   +   // CookieHeader  / cs(Cookie)         added 12 Sep 2012 // TODO: why the *?
     w +  "[\\S]+"   +   // ResultType    / x-edge-result-type added 12 Sep 2012
     w +  "[\\S]+)?" +   // X-Amz-Cf-Id   / x-edge-request-id  added 12 Sep 2012
     ow + "[\\S]+"   +   // XHostHeader   / x-host-header      added 21 Oct 2013
     w +  "[\\S]+"   +   // CsProtocol    / cs-protocol        added 21 Oct 2013
-    w +  "[\\S]+)?").r  // CsBytes       / cs-bytes           added 21 Oct 2013
+    w +  "[\\S]+)?" +   // CsBytes       / cs-bytes           added 21 Oct 2013
+    ow + "[\\S]+"   +   // TimeTaken     / time-taken         added 29 Apr 2014
+    w +      ".*)?").r  // Anything added in the future by Amazon  
   }
 
   /**
@@ -187,16 +189,16 @@ trait CloudFrontLikeLoader extends CollectorLoader {
       // Validations
       // Let's strip double-encodings if this is an actual CloudFront row
       val timestamp = toTimestamp(date, time)
-      val querystring = if (isActualCloudFront) singleEncodePcts(qs) else qs
-      val payload = toGetPayload(querystring)
+      val querystring = if (isActualCloudfront) singleEncodePcts(qs) else qs
+      val payload = TrackerPayload.extractGetPayload(toOption(querystring), CfEncoding)
 
       // No validation (yet) on the below
-      val userAgent  = if (isActualCloudFront) singleEncodePcts(ua) else ua
-      val refr = if (isActualCloudFront) singleEncodePcts(rfr) else rfr
+      val userAgent  = if (isActualCloudfront) singleEncodePcts(ua) else ua
+      val refr = if (isActualCloudfront) singleEncodePcts(rfr) else rfr
       val referer = toOption(refr) map toCleanUri
 
       (timestamp.toValidationNel |@| payload.toValidationNel) { (t, p) =>
-        Some(CanonicalInput(t, NVGetPayload(p), getSource, CfEncoding, toOption(ip), toOption(userAgent), referer, Nil, None)) // No headers or separate userId.
+        Some(CanonicalInput(t, NvGetPayload(p), getSource, CfEncoding, toOption(ip), toOption(userAgent), referer, Nil, None)) // No headers or separate userId.
       }
     }
 
@@ -214,26 +216,12 @@ trait CloudFrontLikeLoader extends CollectorLoader {
    *         or an error String, all wrapped in
    *         a Scalaz Validation
    */
-  private def toTimestamp(date: String, time: String): Validation[String, DateTime] =
+  private[inputs] def toTimestamp(date: String, time: String): Validation[String, DateTime] =
     try {
       DateTime.parse("%sT%s+00:00".format(date, time)).success // Construct a UTC ISO date from CloudFront date and time
     } catch {
       case e => "Unexpected exception converting date [%s] and time [%s] to timestamp: [%s]".format(date, time, e.getMessage).fail
     }
-
-  /**
-   * Converts a raw querystring into a
-   * GetPayload object.
-   *
-   * @param querystring The raw querystring
-   * @return the GetPayload object, or
-   *         an error, all wrapped in a
-   *         Scalaz Validation
-   */
-  private def toGetPayload(querystring: String): ValidatedNameValueNel = toOption(querystring) match {
-    case Some(qs) => TrackerPayload.extractGetPayload(qs, CfEncoding)
-    case None => "Querystring is empty, cannot extract GET payload".fail
-  }
 
   /**
    * Checks whether a String field is a hyphen
@@ -243,7 +231,7 @@ trait CloudFrontLikeLoader extends CollectorLoader {
    * @param field The field to check
    * @return True if the String was a hyphen "-"
    */
-  private def toOption(field: String): Option[String] = Option(field) match {
+  private[inputs] def toOption(field: String): Option[String] = Option(field) match {
     case Some("-") => None
     case Some("")  => None
     case s => s // Leaves any other Some(x) or None as-is
@@ -261,7 +249,7 @@ trait CloudFrontLikeLoader extends CollectorLoader {
    * @param s The String to clean
    * @return the cleaned string
    */
-  private def toCleanUri(uri: String): String = 
+  private[inputs] def toCleanUri(uri: String): String = 
     StringUtils.removeEnd(uri, "%")
 
   /**

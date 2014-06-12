@@ -35,10 +35,11 @@ object CollectorLoader {
    *         an an error message, boxed
    *         in a Scalaz Validation
    */
-  def getLoader(collector: String): Validation[String, CollectorLoader] = collector match {
-    case "cloudfront" => CloudFrontLoader.success
+  def getLoader(collectorOrProtocol: String): Validation[String, CollectorLoader[_]] = collectorOrProtocol match {
+    case "cloudfront" => CloudfrontLoader.success
     case "clj-tomcat" => CljTomcatLoader.success
-    case  c           => "[%s] is not a recognised SnowPlow event collector".format(c).fail
+    case "thrift-raw" => ThriftLoader.success // Finally - a data protocol rather than a piece of software
+    case  c           => "[%s] is not a recognised Snowplow event collector".format(c).fail
   }
 }
 
@@ -46,7 +47,7 @@ object CollectorLoader {
  * All loaders must implement this
  * abstract base class.
  */
-abstract class CollectorLoader {
+abstract class CollectorLoader[T] {
   
   import CanonicalInput._
 
@@ -63,7 +64,7 @@ abstract class CollectorLoader {
    *         boxed, or None if no input was
    *         extractable.
    */
-  def toCanonicalInput(line: String): ValidatedMaybeCanonicalInput
+  def toCanonicalInput(line: T): ValidatedMaybeCanonicalInput
 
   /**
    * Checks whether a request to
