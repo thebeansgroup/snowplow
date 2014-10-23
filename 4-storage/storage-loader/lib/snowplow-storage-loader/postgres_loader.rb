@@ -90,7 +90,7 @@ module SnowPlow
             conn.transaction do
               conn.exec(copy_statement)
               begin
-                File.open(file, 'r+') do |copy_data|
+                File.open(file) do |copy_data|
                   while copy_data.read( COPY_BUFFER_SIZE, buf )
                     until conn.put_copy_data( buf )
                       puts 'Waiting for connection to be writable'
