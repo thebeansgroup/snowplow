@@ -89,25 +89,12 @@ module SnowPlow
             buf = ''
             conn.transaction do
               conn.exec(copy_statement)
-              begin
-                File.open(file) do |copy_data|
-                  while copy_data.read( COPY_BUFFER_SIZE, buf )
-                    until conn.put_copy_data( buf )
-                      puts 'Waiting for connection to be writable'
-                      sleep 0.1
-                    end
-                  end
-                end
-              rescue Errno => err
-                errmsg = "#{err.class.name} while reading copy data: #{err.message}"
-                conn.put_copy_end( errmsg )
-                status = [file, err.class, err.message]
-                break
-              else
-                conn.put_copy_end
-                while res = conn.get_result
-                  puts "Result of COPY is: #{res.res_status(res.result_status)}"
-                end
+              IO.foreach(file) do |copy_data|
+                print copy_data
+              end
+              conn.put_copy_end
+              while res = conn.get_result
+                puts "Result of COPY is: #{res.res_status(res.result_status)}"
               end
             end
           rescue PG::Error => err
